@@ -1,0 +1,169 @@
+// ------------------------
+// 配置区域
+// ------------------------
+const searchCourseCode = "502286020"; // 目标课程号
+const searchTeacherName = "喻鹏铭";    // 目标老师名字
+const searchDayOfWeek = "5";          // 目标星期 (0=任意)
+const searchClassPeriod = "7";        // 目标节次 (0=任意)
+const interval = 20000;                // 刷新间隔（毫秒）
+
+const courseListURL = "/student/courseSelect/freeCourse/courseList";
+const selectCourseURL = "/student/courseSelect/selectCourse/checkInputCodeAndSubmit";
+
+// ------------------------
+// 防止重复启动及浮窗代码... (保持不变)
+// ------------------------
+if (window.courseMonitorInterval) clearInterval(window.courseMonitorInterval);
+window.isSelecting = false;
+let floatBox = document.getElementById("courseMonitorFloatBox");
+if (!floatBox) {
+    floatBox = document.createElement("div");
+    floatBox.id = "courseMonitorFloatBox";
+    Object.assign(floatBox.style, {
+        position: "fixed", top: "10px", right: "10px", width: "420px", maxHeight: "80vh",
+        overflowY: "auto", background: "rgba(240,255,240,0.95)", padding: "10px",
+        border: "2px solid #333", borderRadius: "8px", zIndex: 9999,
+        fontSize: "14px", fontFamily: "monospace"
+    });
+    document.body.appendChild(floatBox);
+}
+
+// ------------------------
+// 辅助函数：fajhh 自动嗅探器 (精确制导版)
+// ------------------------
+function findFajhhAutomagically() {
+    // 策略一 (最高优先级): 根据您的发现，从 "自由选课" 按钮的 onclick 属性中精确提取
+    try {
+        const zyxkElement = document.getElementById('zyxk'); // 定位到 id="zyxk" 的 li 元素
+        if (zyxkElement) {
+            const onclickAttr = zyxkElement.getAttribute('onclick');
+            const regex = /fajhh=([0-9]+)/; // 正则表达式匹配 fajhh=后面的一串数字
+            const match = onclickAttr.match(regex);
+            if (match && match[1]) {
+                console.log(`Fajhh Finder: 成功! 从 #zyxk 元素的 onclick 属性中提取到 fajhh:`, match[1]);
+                return match[1];
+            }
+        }
+    } catch(e) { console.error("Fajhh Finder: [策略一] 执行出错", e); }
+    
+    // 策略二 (备用方案): 从常见的隐藏 input 中查找
+    const commonSelectors = ['input[name="fajhh"]', '#fajhh_hdd', '#fajhh'];
+    for (const selector of commonSelectors) {
+        const element = document.querySelector(selector);
+        if (element && element.value) {
+            console.log(`Fajhh Finder: [策略二] 在选择器 "${selector}" 中找到 fajhh:`, element.value);
+            return element.value;
+        }
+    }
+
+    console.error("Fajhh Finder: 自动查找 fajhh 失败！所有策略都未命中。");
+    return null; // 如果所有方法都失败了
+}
+
+
+// ------------------------
+// 自动选课函数 (保持不变)
+// ------------------------
+async function selectCourse(course) {
+    try {
+        const token = document.getElementById("tokenValue")?.value;
+        const fajhhValue = findFajhhAutomagically();
+
+        if (!token || !fajhhValue) {
+            floatBox.innerHTML += `<div style="color:red">❌ 关键参数自动获取失败！脚本已停止。</div>`;
+            window.isSelecting = false;
+            clearInterval(window.courseMonitorInterval);
+            return;
+        }
+
+        const kcmsSourceString = `${course.kcm}_${course.kxh}`;
+        let kcmsValue = "";
+        for (let i = 0; i < kcmsSourceString.length; i++) {
+            kcmsValue += kcmsSourceString.charCodeAt(i) + ",";
+        }
+
+        const startPeriod = course.skjc.split('-')[0];
+        const sjValue = `${course.skxq}_${startPeriod}`;
+        const kcIds = `${course.kch}_${course.kxh}_${course.zxjxjhh}`;
+
+        const selectFormData = new URLSearchParams({
+            dealType: "5", kcIds, kcms: kcmsValue, fajhh: fajhhValue, fj: "0", sj: sjValue,
+            kkxsh: course.kkxsh || "", kclbdm: course.kclbdm || "",
+            inputCode: "undefined", tokenValue: token
+        });
+
+        const res = await fetch(selectCourseURL, {
+            method: "POST", body: selectFormData,
+            headers: {
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest", "Referer": location.href
+            }
+        });
+        const result = await res.json();
+        console.log("选课结果:", result);
+
+        if (result.success || result.isSuccess) {
+            floatBox.innerHTML += `<div style="color:green;font-weight:bold">✅ 课程 [${course.kcm}] 选课成功！</div>`;
+            clearInterval(window.courseMonitorInterval);
+        } else {
+            floatBox.innerHTML += `<div style="color:red">❌ 选课失败: ${result.msg || "未知错误"}</div>`;
+            window.isSelecting = false;
+        }
+    } catch (err) {
+        console.error("选课请求异常:", err);
+        floatBox.innerHTML += `<div style="color:red">⚠️ 请求异常: ${err.message}</div>`;
+        window.isSelecting = false;
+    }
+}
+
+// ------------------------
+// 监控函数 (保持不变)
+// ------------------------
+async function checkCourses() {
+    try {
+        floatBox.innerHTML = `<b>🎯 实时课程监控 (精确制导)</b><br/>
+        <small>条件: 课程号[${searchCourseCode||"任意"}] 老师[${searchTeacherName||"任意"}]</small><hr/>`;
+        const formData = new URLSearchParams({
+            kkxsh: "", kch: searchCourseCode, kcm: "", skjs: searchTeacherName, xq: searchDayOfWeek,
+            jc: searchClassPeriod, kclbdm: "", vt: "", fj: "0"
+        });
+        const res = await fetch(courseListURL, {
+            method: "POST", body: formData, headers: {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest", "Referer": location.href
+            }
+        });
+        const data = await res.json();
+        const courses = data.rwRxkZlList || [];
+
+        if (courses.length === 0) {
+            floatBox.innerHTML += `<div>${new Date().toLocaleTimeString()} - 未找到课程</div>`;
+            return;
+        }
+
+        courses.forEach(course => {
+            const seats = course.bkskyl;
+            const logText = `${new Date().toLocaleTimeString()} - ${course.kcm} | 剩余: ${seats}`;
+            const logEntry = document.createElement("div");
+            logEntry.textContent = logText;
+            logEntry.style.color = seats > 0 ? "red" : "black";
+            logEntry.style.fontWeight = seats > 0 ? "bold" : "normal";
+            floatBox.appendChild(logEntry);
+
+            if (seats > 0 && !window.isSelecting) {
+                window.isSelecting = true;
+                selectCourse(course);
+            }
+        });
+    } catch (err) {
+        console.error("抓取失败:", err);
+        floatBox.innerHTML += `<div style="color:red">抓取失败: ${err.message}</div>`;
+    }
+}
+
+// ------------------------
+// 启动
+// ------------------------
+window.courseMonitorInterval = setInterval(checkCourses, interval);
+checkCourses();
