@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Alan的抢课神器 (验证码辅助版)
+// @name         Alan的抢课神器 (验证码熔断版)
 // @namespace    http://tampermonkey.net/
-// @version      3.2
-// @description  自动抢课脚本，支持手动输入验证码提交，随机延迟防封，Liquid Glass UI
+// @version      3.3
+// @description  支持手动输验证码，遇验证码错误自动急停并报警，随机延迟防封，Liquid Glass UI
 // @author       Alan
 // @match        http://zhjw.scu.edu.cn/student/courseSelect/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================
-    // 🚀 动态抢课控制台 (验证码辅助版 - Author: Alan)
+    // 🚀 动态抢课控制台 (验证码熔断版 v3.3 - Author: Alan)
     // =========================================================
 
     // --- 1. 初始化与状态管理 ---
@@ -27,7 +27,7 @@
         if (el) el.remove();
     });
 
-    // --- CSS 样式 (Liquid Glass) ---
+    // --- CSS 样式 (保持 Liquid Glass 风格) ---
     const style = document.createElement('style');
     style.id = "courseMonitorLiquidStyle";
     style.innerHTML = `
@@ -97,8 +97,8 @@
             <label>教师名</label> <input id="inp_teacher" type="text" value="" placeholder="选填" class="liquid-input">
             <label>周 / 节</label> <div style="display:flex;gap:8px;"><input id="inp_xq" type="text" class="liquid-input" style="text-align:center"><input id="inp_jc" type="text" class="liquid-input" style="text-align:center"></div>
             
-            <label style="color:#d63384">验证码</label> 
-            <input id="inp_vcode" type="text" placeholder="如页面出现验证码，请在此输入" class="liquid-input" style="border-color:rgba(214, 51, 132, 0.4)!important;">
+            <label style="color:#d63384;font-weight:800">验证码</label> 
+            <input id="inp_vcode" type="text" placeholder="若页面有验证码请填写" class="liquid-input" style="border-color:rgba(214, 51, 132, 0.4)!important;background:rgba(214, 51, 132, 0.05)!important">
 
             <label title="基础间隔">基准ms</label> <input id="inp_interval" type="number" value="2000" class="liquid-input">
         </div>
@@ -110,14 +110,14 @@
         <div id="status_bar" style="font-size:11px;color:#444;text-align:center;font-weight:600;text-shadow:0 1px 1px rgba(255,255,255,0.5)">Ready</div>
         <div id="footer_info">
             <div style="font-weight:bold;color:#0056b3;">🛠️ Dev: Alan</div>
-            <div>🛡️ 验证码提交已支持</div>
+            <div>🛡️ 验证码错误自动急停</div>
         </div>
     `;
 
     const el = {
         kch: document.getElementById('inp_kch'), teacher: document.getElementById('inp_teacher'),
         xq: document.getElementById('inp_xq'), jc: document.getElementById('inp_jc'),
-        vcode: document.getElementById('inp_vcode'), // 获取验证码框
+        vcode: document.getElementById('inp_vcode'),
         interval: document.getElementById('inp_interval'), btn: document.getElementById('btn_toggle'),
         log: document.getElementById('log_area'), clear: document.getElementById('btn_clear'),
         status: document.getElementById('status_bar'), header: document.getElementById('drag_header')
@@ -146,13 +146,10 @@
         const fajhh = findFajhhAutomagically();
         if (!token || !fajhh) { log("❌ 参数缺失，无法选课", "#dc3545"); return; }
         
-        log(`🚀 发现名额！立即提交: ${course.kcm}`, "#007aff");
+        log(`🚀 发现名额！正在提交: ${course.kcm}`, "#007aff");
 
-        // ✨ 获取用户填写的验证码 ✨
         const userVCode = el.vcode.value.trim();
-        if(userVCode) {
-            log(`🔑 携带验证码提交: ${userVCode}`, "#d63384");
-        }
+        if(userVCode) log(`🔑 携带验证码: ${userVCode}`, "#d63384");
 
         try {
             let kcmsValue = ""; const kcmsSource = `${course.kcm}_${course.kxh}`;
@@ -162,23 +159,29 @@
                 dealType: "5", kcIds: `${course.kch}_${course.kxh}_${course.zxjxjhh}`,
                 kcms: kcmsValue, fajhh: fajhh, fj: "0", sj: `${course.skxq}_${course.skjc.split('-')[0]}`,
                 kkxsh: course.kkxsh||"", kclbdm: course.kclbdm||"", 
-                // ✨ 这里是关键：如果没有填验证码，则传 undefined (或服务器默认值)
-                // 大多数正方/URP系统，验证码字段名为 inputCode
-                inputCode: userVCode || "undefined", 
+                inputCode: userVCode || "undefined", // 提交验证码
                 tokenValue: token
             });
 
             const res = await fetch("/student/courseSelect/selectCourse/checkInputCodeAndSubmit", {
                 method: "POST", body: params, headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }
             });
-            const resultJson = await res.json();
             
-            // 🛡️ 仍然保留验证码报警逻辑，防止填错了
-            if (JSON.stringify(resultJson).includes("验证码") || resultJson.msg?.includes("验证码")) {
-                log("⛔ 错误：验证码错误或需要验证码！", "red");
+            const resultJson = await res.json();
+            const resString = JSON.stringify(resultJson);
+
+            // ⛔ 熔断机制：如果返回信息包含 "验证码" (错误/失效/为空)
+            if (resString.includes("验证码")) {
+                log("⛔ 验证码错误/失效！脚本已急停！", "red");
+                
+                // 1. 播放报警音 (Error Sound)
                 try { new Audio("https://xp.liujason.com/img/error.mp3").play(); } catch(e){}
+                
+                // 2. 立即停止
                 stopMonitor(); 
-                alert("提交失败：请检查验证码是否正确，或重新刷新页面输入！"); 
+                
+                // 3. 弹窗提醒
+                alert("❌ 验证码错误或过期！\n\n请手动刷新网页上的验证码图片，\n填入新的验证码后，再次点击启动。"); 
                 return;
             }
 
@@ -186,7 +189,7 @@
             if (await verifySuccess(course.kch)) {
                 log(`🎉 抢课成功！${course.kcm}`, "#28a745");
                 try { new Audio("https://xp.liujason.com/img/win.mp3").play(); } catch(e){}
-                stopMonitor(); alert(`抢到啦！${course.kcm}`);
+                stopMonitor(); alert(`🎉 恭喜！抢到课了：${course.kcm}`);
             } else {
                 log(`⚠️ 提交完成但未入选，继续监控...`, "#e67e22"); window.isSelecting = false;
             }
