@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Alan的抢课神器 (拟人防封版)
-// @namespace    [http://tampermonkey.net/](http://tampermonkey.net/)
-// @version      3.1
-// @description  自动抢课脚本，加入随机延迟(Jitter)防止被判定为机器人，Liquid Glass UI
+// @name         Alan的抢课神器 (验证码辅助版)
+// @namespace    http://tampermonkey.net/
+// @version      3.2
+// @description  自动抢课脚本，支持手动输入验证码提交，随机延迟防封，Liquid Glass UI
 // @author       Alan
 // @match        http://zhjw.scu.edu.cn/student/courseSelect/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================
-    // 🚀 动态抢课控制台 (防检测拟人版 - Author: Alan)
+    // 🚀 动态抢课控制台 (验证码辅助版 - Author: Alan)
     // =========================================================
 
     // --- 1. 初始化与状态管理 ---
@@ -51,7 +51,7 @@
             box-shadow: inset 0 2px 5px rgba(0,0,0,0.02), 0 0 15px rgba(255,255,255,0.6) !important;
         }
         #log_area {
-            width: 100%; height: 150px; overflow-y: auto; padding: 10px 12px;
+            width: 100%; height: 140px; overflow-y: auto; padding: 10px 12px;
             background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.5);
             border-radius: 14px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
             font-family: monospace; font-size: 12px; color: #222;
@@ -80,7 +80,7 @@
     const floatBox = document.createElement("div");
     floatBox.id = "courseMonitorFloatBox";
     Object.assign(floatBox.style, {
-        position: "fixed", top: "30px", right: "30px", width: "360px",
+        position: "fixed", top: "20px", right: "20px", width: "360px",
         background: "linear-gradient(125deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.05) 100%)",
         backdropFilter: "blur(40px) saturate(200%)", webkitBackdropFilter: "blur(40px) saturate(200%)",
         border: "1px solid rgba(255, 255, 255, 0.3)",
@@ -96,7 +96,11 @@
             <label>课程号</label> <input id="inp_kch" type="text" value="" placeholder="必填" class="liquid-input">
             <label>教师名</label> <input id="inp_teacher" type="text" value="" placeholder="选填" class="liquid-input">
             <label>周 / 节</label> <div style="display:flex;gap:8px;"><input id="inp_xq" type="text" class="liquid-input" style="text-align:center"><input id="inp_jc" type="text" class="liquid-input" style="text-align:center"></div>
-            <label title="基础间隔，实际会有随机波动">基准ms</label> <input id="inp_interval" type="number" value="2000" class="liquid-input">
+            
+            <label style="color:#d63384">验证码</label> 
+            <input id="inp_vcode" type="text" placeholder="如页面出现验证码，请在此输入" class="liquid-input" style="border-color:rgba(214, 51, 132, 0.4)!important;">
+
+            <label title="基础间隔">基准ms</label> <input id="inp_interval" type="number" value="2000" class="liquid-input">
         </div>
         <div style="display:flex;gap:12px;margin-top:10px;">
             <button id="btn_toggle" class="c-btn btn-start" style="flex:2;">▶ 启动 (随机间隔)</button>
@@ -106,13 +110,14 @@
         <div id="status_bar" style="font-size:11px;color:#444;text-align:center;font-weight:600;text-shadow:0 1px 1px rgba(255,255,255,0.5)">Ready</div>
         <div id="footer_info">
             <div style="font-weight:bold;color:#0056b3;">🛠️ Dev: Alan</div>
-            <div>🛡️ 随机抖动已启用</div>
+            <div>🛡️ 验证码提交已支持</div>
         </div>
     `;
 
     const el = {
         kch: document.getElementById('inp_kch'), teacher: document.getElementById('inp_teacher'),
         xq: document.getElementById('inp_xq'), jc: document.getElementById('inp_jc'),
+        vcode: document.getElementById('inp_vcode'), // 获取验证码框
         interval: document.getElementById('inp_interval'), btn: document.getElementById('btn_toggle'),
         log: document.getElementById('log_area'), clear: document.getElementById('btn_clear'),
         status: document.getElementById('status_bar'), header: document.getElementById('drag_header')
@@ -140,28 +145,47 @@
         const token = document.getElementById("tokenValue")?.value;
         const fajhh = findFajhhAutomagically();
         if (!token || !fajhh) { log("❌ 参数缺失，无法选课", "#dc3545"); return; }
+        
         log(`🚀 发现名额！立即提交: ${course.kcm}`, "#007aff");
+
+        // ✨ 获取用户填写的验证码 ✨
+        const userVCode = el.vcode.value.trim();
+        if(userVCode) {
+            log(`🔑 携带验证码提交: ${userVCode}`, "#d63384");
+        }
+
         try {
             let kcmsValue = ""; const kcmsSource = `${course.kcm}_${course.kxh}`;
             for (let i = 0; i < kcmsSource.length; i++) kcmsValue += kcmsSource.charCodeAt(i) + ",";
+            
             const params = new URLSearchParams({
                 dealType: "5", kcIds: `${course.kch}_${course.kxh}_${course.zxjxjhh}`,
                 kcms: kcmsValue, fajhh: fajhh, fj: "0", sj: `${course.skxq}_${course.skjc.split('-')[0]}`,
-                kkxsh: course.kkxsh||"", kclbdm: course.kclbdm||"", inputCode: "undefined", tokenValue: token
+                kkxsh: course.kkxsh||"", kclbdm: course.kclbdm||"", 
+                // ✨ 这里是关键：如果没有填验证码，则传 undefined (或服务器默认值)
+                // 大多数正方/URP系统，验证码字段名为 inputCode
+                inputCode: userVCode || "undefined", 
+                tokenValue: token
             });
+
             const res = await fetch("/student/courseSelect/selectCourse/checkInputCodeAndSubmit", {
                 method: "POST", body: params, headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }
             });
             const resultJson = await res.json();
+            
+            // 🛡️ 仍然保留验证码报警逻辑，防止填错了
             if (JSON.stringify(resultJson).includes("验证码") || resultJson.msg?.includes("验证码")) {
-                log("⛔ 警告：需验证码！脚本已急停！", "red");
-                try { new Audio("[https://xp.liujason.com/img/error.mp3](https://xp.liujason.com/img/error.mp3)").play(); } catch(e){}
-                stopMonitor(); alert("系统提示需要验证码，请手动刷新页面输入！"); return;
+                log("⛔ 错误：验证码错误或需要验证码！", "red");
+                try { new Audio("https://xp.liujason.com/img/error.mp3").play(); } catch(e){}
+                stopMonitor(); 
+                alert("提交失败：请检查验证码是否正确，或重新刷新页面输入！"); 
+                return;
             }
+
             await sleep(1500);
             if (await verifySuccess(course.kch)) {
                 log(`🎉 抢课成功！${course.kcm}`, "#28a745");
-                try { new Audio("[https://xp.liujason.com/img/win.mp3](https://xp.liujason.com/img/win.mp3)").play(); } catch(e){}
+                try { new Audio("https://xp.liujason.com/img/win.mp3").play(); } catch(e){}
                 stopMonitor(); alert(`抢到啦！${course.kcm}`);
             } else {
                 log(`⚠️ 提交完成但未入选，继续监控...`, "#e67e22"); window.isSelecting = false;
