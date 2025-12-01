@@ -4,9 +4,7 @@
 // @version      3.1
 // @description  自动抢课脚本，加入随机延迟(Jitter)防止被判定为机器人，Liquid Glass UI
 // @author       Alan
-// @match        *://*/*student/*
-// @match        *://*/*jwgl*/*
-// @match        *://*/*xsxk*/*
+// @match        http://zhjw.scu.edu.cn/student/courseSelect/*
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
