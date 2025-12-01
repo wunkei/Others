@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Alan的抢课神器 (验证码熔断版)
+// @name         Alan的选课实验
 // @namespace    http://tampermonkey.net/
-// @version      3.3
-// @description  支持手动输验证码，遇验证码错误自动急停并报警，随机延迟防封，Liquid Glass UI
+// @version      3.4
+// @description  每次请求都显示余量，支持验证码熔断，随机延迟防封，Liquid Glass UI
 // @author       Alan
 // @match        http://zhjw.scu.edu.cn/student/courseSelect/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================
-    // 🚀 动态抢课控制台 (v3.3 - Author: Alan)
+    // 🚀 动态选课控制台 (v3.4 - Author: Alan)
     // =========================================================
 
     // --- 1. 初始化与状态管理 ---
@@ -91,26 +91,27 @@
     document.body.appendChild(floatBox);
 
     floatBox.innerHTML = `
-        <div id="drag_header">拟人化抢课台 <span>(拖动)</span></div>
+        <div id="drag_header">选课台</div>
         <div style="display:grid;grid-template-columns: 65px 1fr;gap:12px 10px;align-items:center;">
             <label>课程号</label> <input id="inp_kch" type="text" value="" placeholder="必填" class="liquid-input">
             <label>教师名</label> <input id="inp_teacher" type="text" value="" placeholder="选填" class="liquid-input">
-            <label>周 / 节</label> <div style="display:flex;gap:8px;"><input id="inp_xq" type="text" class="liquid-input" style="text-align:center"><input id="inp_jc" type="text" class="liquid-input" style="text-align:center"></div>
-            
-            <label style="color:#d63384;font-weight:800">验证码</label> 
+            <label>星期 / 节</label> <div style="display:flex;gap:8px;" ><input id="inp_xq" type="text" class="liquid-input" placeholder="必填" style="text-align:center"><input id="inp_jc" type="text" class="liquid-input" placeholder="必填" style="text-align:center"></div>
+
+            <label style="color:#d63384;font-weight:800">验证码</label>
             <input id="inp_vcode" type="text" placeholder="若页面有验证码请填写" class="liquid-input" style="border-color:rgba(214, 51, 132, 0.4)!important;background:rgba(214, 51, 132, 0.05)!important">
 
-            <label title="基础间隔">基准ms</label> <input id="inp_interval" type="number" value="2000" class="liquid-input">
+            <label title="基础间隔">基准ms</label> <input id="inp_interval" type="number" value="1000" class="liquid-input">
         </div>
         <div style="display:flex;gap:12px;margin-top:10px;">
-            <button id="btn_toggle" class="c-btn btn-start" style="flex:2;">▶ 启动 (随机间隔)</button>
-            <button id="btn_clear" class="c-btn btn-clear" style="flex:1;">清空</button>
+            <button id="btn_toggle" class="c-btn btn-start" style="flex:2;">▶ 开始选课</button>
+            <button id="btn_clear" class="c-btn btn-clear" style="flex:1;">清空输出</button>
         </div>
         <div id="log_area"></div>
         <div id="status_bar" style="font-size:11px;color:#444;text-align:center;font-weight:600;text-shadow:0 1px 1px rgba(255,255,255,0.5)">Ready</div>
         <div id="footer_info">
-            <div style="font-weight:bold;color:#0056b3;">🛠️ Dev: Alan</div>
-            <div>🛡️ 验证码错误自动急停</div>
+            <div style="font-weight:bold;color:#0056b3;"><a href="https://github.com/wunkei" target="_blank">🛠️ Dev: Alan</a></div>
+        <div>⚠️ 仅供学习交流</div>
+
         </div>
     `;
 
@@ -128,12 +129,15 @@
         const div = document.createElement("div");
         div.innerHTML = `<span style="color:#666;font-size:10px;">[${new Date().toLocaleTimeString()}]</span> <span style="color:${color};font-weight:600;text-shadow:0 1px 1px rgba(255,255,255,0.3)">${msg}</span>`;
         div.style.marginBottom = "4px"; el.log.prepend(div);
+
+        // 自动滚动到底部 (可选，不想自动滚动可注释掉下面这行)
+        // el.log.scrollTop = 0; // 反向插入用不到这个，如果是 appendChild 则需要
     }
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     function getRandomInterval() {
         const base = parseInt(el.interval.value) || 2000;
-        const jitter = base * 0.2; 
+        const jitter = base * 0.2;
         return Math.floor(base + (Math.random() * jitter * 2 - jitter));
     }
 
@@ -145,7 +149,7 @@
         const token = document.getElementById("tokenValue")?.value;
         const fajhh = findFajhhAutomagically();
         if (!token || !fajhh) { log("❌ 参数缺失，无法选课", "#dc3545"); return; }
-        
+
         log(`🚀 发现名额！正在提交: ${course.kcm}`, "#007aff");
 
         const userVCode = el.vcode.value.trim();
@@ -154,11 +158,11 @@
         try {
             let kcmsValue = ""; const kcmsSource = `${course.kcm}_${course.kxh}`;
             for (let i = 0; i < kcmsSource.length; i++) kcmsValue += kcmsSource.charCodeAt(i) + ",";
-            
+
             const params = new URLSearchParams({
                 dealType: "5", kcIds: `${course.kch}_${course.kxh}_${course.zxjxjhh}`,
                 kcms: kcmsValue, fajhh: fajhh, fj: "0", sj: `${course.skxq}_${course.skjc.split('-')[0]}`,
-                kkxsh: course.kkxsh||"", kclbdm: course.kclbdm||"", 
+                kkxsh: course.kkxsh||"", kclbdm: course.kclbdm||"",
                 inputCode: userVCode || "undefined", // 提交验证码
                 tokenValue: token
             });
@@ -166,22 +170,22 @@
             const res = await fetch("/student/courseSelect/selectCourse/checkInputCodeAndSubmit", {
                 method: "POST", body: params, headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }
             });
-            
+
             const resultJson = await res.json();
             const resString = JSON.stringify(resultJson);
 
             // ⛔ 熔断机制：如果返回信息包含 "验证码" (错误/失效/为空)
             if (resString.includes("验证码")) {
                 log("⛔ 验证码错误/失效！脚本已急停！", "red");
-                
+
                 // 1. 播放报警音 (Error Sound)
                 try { new Audio("https://xp.liujason.com/img/error.mp3").play(); } catch(e){}
-                
+
                 // 2. 立即停止
-                stopMonitor(); 
-                
+                stopMonitor();
+
                 // 3. 弹窗提醒
-                alert("❌ 验证码错误或过期！\n\n请手动刷新网页上的验证码图片，\n填入新的验证码后，再次点击启动。"); 
+                alert("❌ 验证码错误或过期！\n\n请手动刷新网页上的验证码图片，\n填入新的验证码后，再次点击启动。");
                 return;
             }
 
@@ -217,12 +221,24 @@
             const data = await res.json();
             const courses = data.rwRxkZlList || [];
             let found = false;
+
+            if (courses.length === 0) {
+                 log("查询成功：暂无符合条件的课程", "#999");
+            }
+
             for (const course of courses) {
-                if (course.bkskyl > 0) {
-                    found = true; log(`!!! 发现: ${course.kcm} 余${course.bkskyl}`, "#dc3545");
+                const seats = course.bkskyl;
+                // ✨ 新增：无论是否有课，都打印日志，但颜色不同
+                if (seats > 0) {
+                    found = true;
+                    log(`!!! 发现: ${course.kcm} 余${seats}`, "#dc3545"); // 红色高亮
                     if (!window.isSelecting) { window.isSelecting = true; selectCourse(course); return; }
+                } else {
+                    // 灰色普通日志
+                    log(`查询中: ${course.kcm} 余${seats}`, "#888");
                 }
             }
+
             if (!found) { el.status.innerText = `监控中... 下次刷新: ${getRandomInterval()}ms后`; }
         } catch (err) { log(`请求失败: ${err.message}`, "#aaa"); }
         if (window.monitorStatus && !window.isSelecting) {
@@ -234,18 +250,18 @@
         if (window.monitorStatus) return;
         if (!el.kch.value && !el.teacher.value) { alert("请输入课程号，星期几以及节数！"); return; }
         window.monitorStatus = true; window.isSelecting = false;
-        el.btn.innerHTML = "⏹ 停止监控";
+        el.btn.innerHTML = "⏹ 停止选课";
         el.btn.classList.remove('btn-start'); el.btn.classList.add('btn-stop');
-        log("=== 🟢 监控已启动 ===", "#007aff");
+        log("=== 🟢 选课已启动 ===", "#007aff");
         checkCoursesLoop();
     }
 
     function stopMonitor() {
         window.monitorStatus = false;
         if (window.courseMonitorTimer) clearTimeout(window.courseMonitorTimer);
-        el.btn.innerHTML = "▶ 启动 (随机间隔)";
+        el.btn.innerHTML = "▶ 开始选课";
         el.btn.classList.remove('btn-stop'); el.btn.classList.add('btn-start');
-        el.status.innerText = "已暂停"; log("=== 🔴 监控已停止 ===", "#888");
+        el.status.innerText = "已暂停"; log("=== 🔴 选课已停止 ===", "#888");
     }
 
     (function makeDraggable() {
