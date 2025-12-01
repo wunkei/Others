@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================
-    // 🚀 动态抢课控制台 (验证码熔断版 v3.3 - Author: Alan)
+    // 🚀 动态抢课控制台 (v3.3 - Author: Alan)
     // =========================================================
 
     // --- 1. 初始化与状态管理 ---
@@ -232,7 +232,7 @@
 
     function startMonitor() {
         if (window.monitorStatus) return;
-        if (!el.kch.value && !el.teacher.value) { alert("请至少输入课程号或教师名！"); return; }
+        if (!el.kch.value && !el.teacher.value) { alert("请输入课程号，星期几以及节数！"); return; }
         window.monitorStatus = true; window.isSelecting = false;
         el.btn.innerHTML = "⏹ 停止监控";
         el.btn.classList.remove('btn-start'); el.btn.classList.add('btn-stop');
