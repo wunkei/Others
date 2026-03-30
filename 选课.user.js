@@ -178,9 +178,6 @@
             if (resString.includes("验证码")) {
                 log("⛔ 验证码错误/失效！脚本已急停！", "red");
 
-                // 1. 播放报警音 (Error Sound)
-                try { new Audio("https://xp.liujason.com/img/error.mp3").play(); } catch(e){}
-
                 // 2. 立即停止
                 stopMonitor();
 
@@ -192,7 +189,6 @@
             await sleep(1500);
             if (await verifySuccess(course.kch)) {
                 log(`🎉 抢课成功！${course.kcm}`, "#28a745");
-                try { new Audio("https://xp.liujason.com/img/win.mp3").play(); } catch(e){}
                 stopMonitor(); alert(`🎉 恭喜！抢到课了：${course.kcm}`);
             } else {
                 log(`⚠️ 提交完成但未入选，继续监控...`, "#e67e22"); window.isSelecting = false;
